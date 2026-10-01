@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -116,6 +118,7 @@ fun AppRoot() {
     val prefs = remember { Prefs(context) }
     var hideAds by remember { mutableStateOf(prefs.hideAds) }
     var compact by remember { mutableStateOf(prefs.compact) }
+    var extraChannels by remember { mutableStateOf(prefs.extraChannels) }
     val pages = remember {
         AppTab.entries.associateWith { Page(context, it.name, it.url, prefs) }
     }
@@ -193,6 +196,12 @@ fun AppRoot() {
                         prefs.compact = v
                         pages.values.forEach { if (it.loaded) it.web.reload() }
                     },
+                    extraChannels = extraChannels,
+                    onExtraChannelsChange = { v ->
+                        extraChannels = v
+                        prefs.extraChannels = v
+                        pages.values.forEach { if (it.loaded) it.web.reload() }
+                    },
                     onOpen = { link ->
                         moreOpened = link.url
                         pages.getValue(AppTab.MORE).apply { web.clearHistory(); open(link.url) }
@@ -203,7 +212,7 @@ fun AppRoot() {
     }
 }
 
-/** 下の1段のバー：タブ4つ ＋ 縮小・倍率・拡大 ＋ メニュー */
+/** 下の1段のバー：地デジ・BS・CS ＋ メニュー ＋ 縮小・倍率・拡大 ＋ その他（あまり使わないので右端） */
 @Composable
 fun BottomBar(
     tab: AppTab,
@@ -219,18 +228,48 @@ fun BottomBar(
             Modifier.fillMaxWidth().navigationBarsPadding().height(50.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppTab.entries.forEach { t ->
-                val selected = tab == t
-                val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                Column(
-                    Modifier.weight(1f).fillMaxHeight().clickable { onTab(t) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Icon(t.icon, null, tint = color, modifier = Modifier.size(22.dp))
-                    Text(
-                        t.label, color = color, fontSize = 10.sp, lineHeight = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            listOf(AppTab.GR, AppTab.BS, AppTab.CS).forEach { t ->
+                BarItem(t.icon, t.label, selected = tab == t, modifier = Modifier.weight(1f)) { onTab(t) }
+            }
+            // メニュー（押しやすいようにタブの並びに置く）
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                BarItem(Icons.Filled.MoreVert, "メニュー", selected = false, modifier = Modifier.fillMaxSize()) { menu = true }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (showingWeb && (page.canGoBack || tab == AppTab.MORE)) {
+                        DropdownMenuItem(
+                            text = { Text("戻る") },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) },
+                            onClick = { menu = false; onBack() },
+                        )
+                    }
+                    if (tab.url != null) {
+                        DropdownMenuItem(
+                            text = { Text("今の時間の番組表へ") },
+                            leadingIcon = { Icon(Icons.Filled.Home, null) },
+                            onClick = { menu = false; page.home() },
+                        )
+                    }
+                    if (showingWeb) {
+                        DropdownMenuItem(
+                            text = { Text("再読み込み") },
+                            leadingIcon = { Icon(Icons.Filled.Refresh, null) },
+                            onClick = { menu = false; page.web.reload() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("拡大率を標準（$ZOOM_DEFAULT%）に戻す") },
+                            leadingIcon = { Icon(Icons.Filled.ZoomIn, null) },
+                            onClick = { menu = false; page.resetZoom() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("ブラウザで開く") },
+                            leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null) },
+                            onClick = { menu = false; onOpenBrowser() },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("その他・設定") },
+                        leadingIcon = { Icon(Icons.Filled.Settings, null) },
+                        onClick = { menu = false; onTab(AppTab.MORE) },
                     )
                 }
             }
@@ -246,44 +285,28 @@ fun BottomBar(
                 IconButton(onClick = { page.zoomIn() }, enabled = page.zoom < ZOOM_MAX, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.ZoomIn, "拡大", modifier = Modifier.size(20.dp))
                 }
-                Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Filled.MoreVert, "メニュー", modifier = Modifier.size(20.dp))
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        if (page.canGoBack || tab == AppTab.MORE) {
-                            DropdownMenuItem(
-                                text = { Text("戻る") },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) },
-                                onClick = { menu = false; onBack() },
-                            )
-                        }
-                        if (tab.url != null) {
-                            DropdownMenuItem(
-                                text = { Text("今の時間の番組表へ") },
-                                leadingIcon = { Icon(Icons.Filled.Home, null) },
-                                onClick = { menu = false; page.home() },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("再読み込み") },
-                            leadingIcon = { Icon(Icons.Filled.Refresh, null) },
-                            onClick = { menu = false; page.web.reload() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("拡大率を100%に戻す") },
-                            leadingIcon = { Icon(Icons.Filled.ZoomIn, null) },
-                            onClick = { menu = false; page.resetZoom() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("ブラウザで開く") },
-                            leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null) },
-                            onClick = { menu = false; onOpenBrowser() },
-                        )
-                    }
-                }
+            }
+            BarItem(AppTab.MORE.icon, AppTab.MORE.label, selected = tab == AppTab.MORE, modifier = Modifier.width(48.dp)) {
+                onTab(AppTab.MORE)
             }
         }
+    }
+}
+
+/** バーのボタン1つ（アイコン＋小さい文字） */
+@Composable
+fun BarItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        modifier.fillMaxHeight().clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
+        Text(
+            label, color = color, fontSize = 10.sp, lineHeight = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
     }
 }
 
@@ -293,6 +316,8 @@ fun LinkList(
     onHideAdsChange: (Boolean) -> Unit,
     compact: Boolean,
     onCompactChange: (Boolean) -> Unit,
+    extraChannels: Boolean,
+    onExtraChannelsChange: (Boolean) -> Unit,
     onOpen: (Link) -> Unit,
 ) {
     val context = LocalContext.current
@@ -311,6 +336,11 @@ fun LinkList(
                 supportingContent = { Text("Gガイドのロゴ・ログイン・検索欄を隠し、日付などの切り替えだけ残します") },
                 trailingContent = { Switch(checked = compact, onCheckedChange = onCompactChange) },
             )
+            ListItem(
+                headlineContent = { Text("地デジに HAB・MRO を追加") },
+                supportingContent = { Text("石川の北陸朝日放送（HAB）と北陸放送（MRO）の列を、福井の番組表の右に並べます") },
+                trailingContent = { Switch(checked = extraChannels, onCheckedChange = onExtraChannelsChange) },
+            )
             HorizontalDivider()
         }
         items(LINKS) { l ->
@@ -323,7 +353,7 @@ fun LinkList(
         }
         item {
             Text(
-                "各番組表は、それぞれの提供元のWebサイトを表示しています。\n拡大縮小：2本指でピンチ、または下のバーの －／＋（タブごとに記憶）\nもう一度同じタブを押すと今の時間の番組表に戻ります\nバージョン $version",
+                "各番組表は、それぞれの提供元のWebサイトを表示しています。\n拡大縮小：2本指でピンチ、または下のバーの －／＋（タブごとに記憶）\n赤い横線が現在時刻です\nもう一度同じタブを押すと今の時間の番組表に戻ります\nバージョン $version",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(16.dp),

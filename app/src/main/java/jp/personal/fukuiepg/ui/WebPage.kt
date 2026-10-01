@@ -21,7 +21,7 @@ import kotlin.math.roundToInt
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    fun zoom(key: String): Int = sp.getInt("zoom_$key", 100)
+    fun zoom(key: String): Int = sp.getInt("zoom_$key", ZOOM_DEFAULT)
     fun setZoom(key: String, v: Int) = sp.edit().putInt("zoom_$key", v).apply()
 
     var hideAds: Boolean
@@ -32,11 +32,18 @@ class Prefs(context: Context) {
     var compact: Boolean
         get() = sp.getBoolean("compact", true)
         set(v) = sp.edit().putBoolean("compact", v).apply()
+
+    /** 地デジに石川のHAB・MROを追加 */
+    var extraChannels: Boolean
+        get() = sp.getBoolean("extraChannels", true)
+        set(v) = sp.edit().putBoolean("extraChannels", v).apply()
 }
 
 const val ZOOM_MIN = 50
 const val ZOOM_MAX = 200
-const val ZOOM_STEP = 10
+const val ZOOM_STEP = 5
+/** 最初の拡大率（「標準に戻す」もこの値） */
+const val ZOOM_DEFAULT = 95
 
 /**
  * タブごとのWebViewと、その表示状態。
@@ -128,7 +135,7 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
     }
 
     private fun roundZoom(v: Float): Int =
-        ((v / 5f).roundToInt() * 5).coerceIn(ZOOM_MIN, ZOOM_MAX)
+        ((v / ZOOM_STEP).roundToInt() * ZOOM_STEP).coerceIn(ZOOM_MIN, ZOOM_MAX)
 
     fun setZoomValue(v: Int) {
         val z = v.coerceIn(ZOOM_MIN, ZOOM_MAX)
@@ -139,7 +146,7 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
 
     fun zoomIn() = setZoomValue((zoom / ZOOM_STEP + 1) * ZOOM_STEP)
     fun zoomOut() = setZoomValue(((zoom + ZOOM_STEP - 1) / ZOOM_STEP - 1) * ZOOM_STEP)
-    fun resetZoom() = setZoomValue(100)
+    fun resetZoom() = setZoomValue(ZOOM_DEFAULT)
 
     /**
      * 拡大率はページの viewport（表示倍率）で変える。
@@ -153,6 +160,8 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
         applyZoom()
         if (prefs.hideAds) web.evaluateJavascript(HIDE_ADS_JS, null)
         if (prefs.compact) web.evaluateJavascript(COMPACT_JS, null)
+        web.evaluateJavascript(NOW_LINE_JS, null)
+        if (prefs.extraChannels) web.evaluateJavascript(EXTRA_CHANNELS_JS, null)
     }
 
     fun open(url: String) {
@@ -215,6 +224,119 @@ const val COMPACT_JS = """
   }
   window.dispatchEvent(new Event('resize'));
   setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 500);
+})();
+"""
+
+/**
+ * 現在時刻の赤い横線を番組表に引くスクリプト（Gガイド用）。
+ * 番組ごとの開始・終了時刻（s / e 属性）と位置から、今の時刻の高さを計算する。30秒ごとに引き直す。
+ * 今日以外の日付を表示しているときは線を出さない。
+ */
+const val NOW_LINE_JS = """
+(function(){
+  if (location.host.indexOf('bangumi.org') < 0) return;
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function stamp(d){ return '' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()); }
+  function toDate(s){ return new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8), +s.slice(8,10), +s.slice(10,12)); }
+  function draw(){
+    var line = document.getElementById('fukui-now-line');
+    var now = new Date(), ns = stamp(now);
+    var uls = document.querySelectorAll('ul[id^="program_line_"]');
+    var hit = null, ul = null;
+    for (var i = 0; i < uls.length && !hit; i++) {
+      var lis = uls[i].children;
+      for (var j = 0; j < lis.length; j++) {
+        var s = lis[j].getAttribute('s'), e = lis[j].getAttribute('e');
+        if (s && e && s <= ns && ns < e && lis[j].offsetHeight > 0) { hit = lis[j]; ul = uls[i]; break; }
+      }
+    }
+    if (!hit) { if (line) line.remove(); return; }
+    var st = toDate(hit.getAttribute('s')), en = toDate(hit.getAttribute('e'));
+    var y = ul.offsetTop + hit.offsetTop + (now - st) / Math.max(en - st, 1) * hit.offsetHeight;
+    var cont = ul.offsetParent || document.body;
+    if (!line) {
+      line = document.createElement('div');
+      line.id = 'fukui-now-line';
+      line.style.cssText = 'position:absolute;left:0;height:0;border-top:2px solid #E53935;z-index:5;pointer-events:none;';
+    }
+    if (line.parentNode !== cont) cont.appendChild(line);
+    line.style.top = (y - 1) + 'px';
+    line.style.width = cont.scrollWidth + 'px';
+  }
+  window.__fukuiNowLineDraw = draw;
+  if (window.__fukuiNowLine) { draw(); return; }
+  window.__fukuiNowLine = true;
+  draw();
+  setInterval(draw, 30000);
+})();
+"""
+
+/**
+ * 福井の地上波番組表に、石川エリアの HAB（北陸朝日放送）と MRO（北陸放送）の列を追加するスクリプト（Gガイド用）。
+ * 同じ日付の石川の番組表を読み込み、福井の番組表の時刻の目盛りに合わせて並べ直す。
+ */
+const val EXTRA_CHANNELS_JS = """
+(function(){
+  if (location.host.indexOf('bangumi.org') < 0) return;
+  if (location.pathname !== '/epg/td' || !/ggm_group_id=62\b/.test(location.search)) return;
+  if (window.__fukuiExtraCh) return;
+  var WANT = ['HAB', 'MRO'];
+  function tmin(s){ return Date.UTC(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8), +s.slice(8,10), +s.slice(10,12)) / 60000; }
+  function px(v){ return parseFloat(v) || 0; }
+
+  // 福井の番組表から「時刻 → 縦位置」の対応表を作る（Gガイドは時間帯によって1時間の高さが違うため）
+  var pts = [];
+  document.querySelectorAll('ul[id^="program_line_"] > li[s][e]').forEach(function(li){
+    var top = px(li.style.top), h = px(li.style.height);
+    pts.push([tmin(li.getAttribute('s')), top]);
+    pts.push([tmin(li.getAttribute('e')), top + h]);
+  });
+  if (pts.length < 4) return;  // まだ番組表が読み込まれていない（読み込み完了時にもう一度呼ばれる）
+  window.__fukuiExtraCh = true;
+  pts.sort(function(a, b){ return a[0] - b[0] || a[1] - b[1]; });
+  var P = [];
+  pts.forEach(function(p){ if (!P.length || p[0] > P[P.length - 1][0]) P.push(p); });
+  function ypos(t){
+    var lo = 0, hi = P.length - 1;
+    if (t <= P[0][0]) { lo = 0; hi = 1; }
+    else if (t >= P[hi][0]) { lo = hi - 1; }
+    else { while (hi - lo > 1) { var m = (lo + hi) >> 1; if (P[m][0] <= t) lo = m; else hi = m; } }
+    var a = P[lo], b = P[hi];
+    return a[1] + (t - a[0]) * (b[1] - a[1]) / Math.max(b[0] - a[0], 1);
+  }
+
+  var url = location.pathname + location.search.replace(/ggm_group_id=62\b/, 'ggm_group_id=60');
+  fetch(url, { credentials: 'same-origin' }).then(function(r){ return r.text(); }).then(function(html){
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var chUl = document.querySelector('#ch_area ul');
+    var area = document.getElementById('program_area');
+    if (!chUl || !area) return;
+    var srcCh = doc.querySelectorAll('#ch_area ul > li');
+    var next = document.querySelectorAll('ul[id^="program_line_"]').length + 1;
+    for (var i = 0; i < srcCh.length; i++) {
+      var name = srcCh[i].textContent;
+      if (!WANT.some(function(w){ return name.indexOf(w) >= 0; })) continue;
+      var srcUl = doc.getElementById('program_line_' + i);
+      if (!srcUl) continue;
+      var ul = document.createElement('ul');
+      ul.id = 'program_line_' + next;
+      Array.prototype.forEach.call(srcUl.children, function(li){
+        var s = li.getAttribute('s'), e = li.getAttribute('e');
+        if (!s || !e) return;
+        var y1 = ypos(tmin(s)), y2 = ypos(tmin(e));
+        if (y2 - y1 < 1) return;
+        var n = document.importNode(li, true);
+        n.style.top = Math.round(y1) + 'px';
+        n.style.height = Math.max(Math.round(y2 - y1) - 1, 1) + 'px';
+        ul.appendChild(n);
+      });
+      area.appendChild(ul);
+      chUl.appendChild(document.importNode(srcCh[i], true));
+      next++;
+    }
+    window.dispatchEvent(new Event('resize'));
+    if (window.__fukuiNowLineDraw) window.__fukuiNowLineDraw();
+  }).catch(function(){});
 })();
 """
 
