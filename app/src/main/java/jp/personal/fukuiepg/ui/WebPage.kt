@@ -366,6 +366,7 @@ const val HIDE_ADS_JS = """
     'iframe[src*="i-mobile"]','iframe[src*="adingo"]','iframe[src*="fluct"]','[id*="fluct"]',
     '[id*="taboola"]','[class*="taboola"]','[id*="logly"]','[class*="logly"]',
     '[class*="ad-banner"]','[class*="adBanner"]','[id*="adBanner"]','[class*="ad_banner"]',
+    '.fixed-banner','[data-ad-banner]',
     '[class*="adArea"]','[id*="adArea"]','[class*="ad_area"]','[id*="ad_area"]','[class*="ad-area"]'
   ].join(',') + '{display:none!important;}';
   var st = document.createElement('style');

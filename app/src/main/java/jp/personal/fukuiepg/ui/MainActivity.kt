@@ -74,7 +74,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 enum class AppTab(val label: String, val icon: ImageVector, val url: String?) {
     GR("地デジ", Icons.Filled.Tv, "https://bangumi.org/epg/td?ggm_group_id=62"),
     BS("BS", Icons.Filled.Satellite, "https://bangumi.org/epg/bs"),
-    CS("CS", Icons.Filled.LiveTv, "https://bangumi.org/epg/cs"),
+    // CS は福井ケーブルテレビで映るチャンネルだけ（FCTV公式の番組表 CableGate の「CATV多ch」）
+    CS("CS", Icons.Filled.LiveTv, "https://www.cablegate.tv/epg/aBfnjnCF?siType=8&areaId=36"),
     MORE("その他", Icons.Filled.Menu, null),
 }
 
@@ -82,7 +83,8 @@ enum class AppTab(val label: String, val icon: ImageVector, val url: String?) {
 data class Link(val title: String, val note: String, val url: String)
 
 val LINKS = listOf(
-    Link("FCTV（福井・さかいケーブルテレビ）番組表", "Cablegate のEPG。FCTVのチャンネル構成で表示", "https://www.cablegate.tv/pc/epg.php?catvid=aBfnjnCF&type=home&areaid=36"),
+    Link("FCTV 番組表（地上波）", "CableGate。FCTVのチャンネル番号で表示", "https://www.cablegate.tv/epg/aBfnjnCF?siType=3&areaId=36"),
+    Link("FCTV 番組表（BS）", "CableGate。FCTVのチャンネル番号で表示", "https://www.cablegate.tv/epg/aBfnjnCF?siType=1&areaId=36"),
     Link("FCTV コミュニティチャンネル", "FCTV独自番組の番組表", "https://www.fctv.jp/community/ch.html"),
     Link("FCTV チャンネルラインナップ", "契約コースで見られるチャンネル", "https://www.fctv.jp/catv_service/line"),
     Link("福井放送（FBC）番組表", "FBCの公式番組表", "https://www.fbc.jp/timetable/"),
