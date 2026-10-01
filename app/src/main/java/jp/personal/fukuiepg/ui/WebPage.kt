@@ -56,8 +56,8 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
         settings.loadWithOverviewMode = true
         settings.useWideViewPort = true
         // 拡大縮小はアプリ側（下のピンチ処理・ボタン）で行う
-        settings.setSupportZoom(false)
-        settings.builtInZoomControls = false
+        settings.setSupportZoom(true)        // viewport の倍率指定を効かせる
+        settings.builtInZoomControls = false // ブラウザ標準のピンチは使わない
         settings.displayZoomControls = false
 
         webViewClient = object : WebViewClient() {
@@ -136,10 +136,12 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
     fun zoomOut() = setZoomValue(((zoom + ZOOM_STEP - 1) / ZOOM_STEP - 1) * ZOOM_STEP)
     fun resetZoom() = setZoomValue(100)
 
+    /**
+     * 拡大率はページの viewport（表示倍率）で変える。
+     * ブラウザのピンチ拡大と同じしくみなので、番組表の時刻列と番組欄がずれない。
+     */
     private fun applyZoom() {
-        web.evaluateJavascript(
-            "document.documentElement.style.zoom='${zoom / 100.0}';", null
-        )
+        web.evaluateJavascript("(${ZOOM_JS})(${zoom / 100.0});", null)
     }
 
     fun applyPageSettings() {
@@ -164,6 +166,32 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
         open(h)
     }
 }
+
+/**
+ * 表示倍率を変えるスクリプト。元のページの横幅（スマホ用ならその幅、PC用なら980px）を基準に、
+ * 倍率 z のときは「幅 = 基準幅 / z」で組み立てて「z 倍」で表示する。
+ */
+const val ZOOM_JS = """
+function(z){
+  var m = document.querySelector('meta[name=viewport]');
+  if (!m) {
+    m = document.createElement('meta'); m.name = 'viewport';
+    m.setAttribute('data-fukui-orig', '');
+    (document.head || document.documentElement).appendChild(m);
+  } else if (!m.hasAttribute('data-fukui-orig')) {
+    m.setAttribute('data-fukui-orig', m.getAttribute('content') || '');
+  }
+  var orig = m.getAttribute('data-fukui-orig');
+  var sw = screen.width || 360;
+  var base = 980;
+  var mw = /width\s*=\s*([^,\s]+)/.exec(orig);
+  if (mw) base = (mw[1] === 'device-width') ? sw : (parseFloat(mw[1]) || 980);
+  var scale = sw / base * z;
+  m.setAttribute('content', 'width=' + Math.round(base / z) + ', initial-scale=' + scale +
+    ', minimum-scale=' + scale + ', maximum-scale=' + scale + ', user-scalable=no');
+  document.documentElement.style.zoom = '';
+}
+"""
 
 /**
  * 広告を隠すスクリプト（表示だけを隠す。ページの内容は変えない）。

@@ -22,7 +22,7 @@
 1. GitHub Desktop で、変更をコミットして「Push origin」する（初回は「Publish repository」。**Keep this code private のチェックは外さなくても大丈夫**です）
 2. ブラウザで GitHub の fukui-bangumi リポジトリを開き、「Actions」タブで「**アプリをビルド**」が緑のチェックになるのを待つ（5分ほど）
    - 動いていなければ「アプリをビルド」→「Run workflow」→ 緑の「Run workflow」
-3. リポジトリのトップページ右側の「**Releases**」を開き、`fukui-bangumi-v1.2.○.apk`（○はビルド番号）をスマホでダウンロードしてインストール
+3. リポジトリのトップページ右側の「**Releases**」を開き、`fukui-bangumi-v1.3.○.apk`（○はビルド番号）をスマホでダウンロードしてインストール
    - 「この提供元のアプリを許可」と出たら許可してください
    - リポジトリを非公開（Private）にした場合は、スマホのブラウザで GitHub にログインしてから Releases を開いてください
 
