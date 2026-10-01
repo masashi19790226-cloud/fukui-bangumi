@@ -27,6 +27,11 @@ class Prefs(context: Context) {
     var hideAds: Boolean
         get() = sp.getBoolean("hideAds", true)
         set(v) = sp.edit().putBoolean("hideAds", v).apply()
+
+    /** 番組表を広く表示（Gガイドの見出し部分を隠す） */
+    var compact: Boolean
+        get() = sp.getBoolean("compact", true)
+        set(v) = sp.edit().putBoolean("compact", v).apply()
 }
 
 const val ZOOM_MIN = 50
@@ -147,6 +152,7 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
     fun applyPageSettings() {
         applyZoom()
         if (prefs.hideAds) web.evaluateJavascript(HIDE_ADS_JS, null)
+        if (prefs.compact) web.evaluateJavascript(COMPACT_JS, null)
     }
 
     fun open(url: String) {
@@ -191,6 +197,25 @@ function(z){
     ', minimum-scale=' + scale + ', maximum-scale=' + scale + ', user-scalable=no');
   document.documentElement.style.zoom = '';
 }
+"""
+
+/**
+ * 番組表を広く表示するスクリプト（Gガイド用）。
+ * ロゴ・ログイン・検索欄・上の広告帯を隠し、「番組表の種類／地域／日付」の切り替え行だけ残す。
+ * Gガイドは見出しの高さに合わせて番組表の位置を計算し直すので、最後に resize を送って再計算させる。
+ */
+const val COMPACT_JS = """
+(function(){
+  if (location.host.indexOf('bangumi.org') < 0) return;
+  if (!document.getElementById('fukui-compact')) {
+    var st = document.createElement('style');
+    st.id = 'fukui-compact';
+    st.textContent = '.sticking-banner,.pc_header,.second_line,.jump_yesterday_menu,#ad_area{display:none!important}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  window.dispatchEvent(new Event('resize'));
+  setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 500);
+})();
 """
 
 /**

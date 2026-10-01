@@ -12,7 +12,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,11 +51,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -58,7 +65,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -109,6 +115,7 @@ fun AppRoot() {
 
     val prefs = remember { Prefs(context) }
     var hideAds by remember { mutableStateOf(prefs.hideAds) }
+    var compact by remember { mutableStateOf(prefs.compact) }
     val pages = remember {
         AppTab.entries.associateWith { Page(context, it.name, it.url, prefs) }
     }
@@ -123,114 +130,171 @@ fun AppRoot() {
         else moreOpened = null
     }
 
+    // 上のバーはなくして、操作は下の1段のバーにまとめる（番組表をできるだけ広く表示）
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (showingWeb && page.title.isNotBlank()) page.title else tab.label + "の番組表",
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+        bottomBar = {
+            BottomBar(
+                tab = tab,
+                page = page,
+                showingWeb = showingWeb,
+                onTab = { t ->
+                    if (tab == t && t.url != null) pages.getValue(t).home() // もう一度押すと今の番組表へ
+                    if (tab == t && t == AppTab.MORE) moreOpened = null
+                    tab = t
                 },
-                navigationIcon = {
-                    if (showingWeb && (page.canGoBack || tab == AppTab.MORE)) {
-                        IconButton(onClick = {
-                            if (page.canGoBack) page.web.goBack() else moreOpened = null
-                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "戻る") }
-                    }
-                },
-                actions = {
-                    if (showingWeb) {
-                        if (tab.url != null) {
-                            IconButton(onClick = { page.home() }) { Icon(Icons.Filled.Home, "今の番組表へ") }
-                        }
-                        IconButton(onClick = { page.web.reload() }) { Icon(Icons.Filled.Refresh, "再読み込み") }
-                        IconButton(onClick = {
-                            page.web.url?.let { u ->
-                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) }
-                            }
-                        }) { Icon(Icons.Filled.OpenInBrowser, "ブラウザで開く") }
+                onBack = { if (page.canGoBack) page.web.goBack() else moreOpened = null },
+                onOpenBrowser = {
+                    page.web.url?.let { u ->
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) }
                     }
                 },
             )
-        },
-        bottomBar = {
-            NavigationBar {
-                AppTab.entries.forEach { t ->
-                    NavigationBarItem(
-                        selected = tab == t,
-                        onClick = {
-                            if (tab == t && t.url != null) pages.getValue(t).home() // もう一度押すと今の番組表へ
-                            if (tab == t && t == AppTab.MORE) moreOpened = null
-                            tab = t
-                        },
-                        icon = { Icon(t.icon, null) },
-                        label = { Text(t.label) },
-                    )
-                }
-            }
         },
     ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize()) {
-            if (showingWeb && page.progress < 100) {
-                LinearProgressIndicator(progress = { page.progress / 100f }, modifier = Modifier.fillMaxWidth())
-            }
-            Box(Modifier.fillMaxSize()) {
-                if (showingWeb) {
-                    // key でタブごとに別のWebViewを差し替える（各タブの表示位置は保たれる）
-                    androidx.compose.runtime.key(tab) {
-                        AndroidView(
-                            factory = { (page.web.parent as? ViewGroup)?.removeView(page.web); page.web },
-                            modifier = Modifier.fillMaxSize(),
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            if (showingWeb) {
+                // key でタブごとに別のWebViewを差し替える（各タブの表示位置は保たれる）
+                androidx.compose.runtime.key(tab) {
+                    AndroidView(
+                        factory = { (page.web.parent as? ViewGroup)?.removeView(page.web); page.web },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                if (page.progress < 100) {
+                    LinearProgressIndicator(
+                        progress = { page.progress / 100f },
+                        modifier = Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter),
+                    )
+                }
+                page.pinchZoom?.let { z ->
+                    Surface(
+                        modifier = Modifier.align(Alignment.Center),
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f),
+                    ) {
+                        Text(
+                            "$z%", color = MaterialTheme.colorScheme.inverseOnSurface,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
-                    ZoomControls(page, Modifier.align(Alignment.BottomEnd).padding(12.dp))
-                } else {
-                    LinkList(
-                        hideAds = hideAds,
-                        onHideAdsChange = { v ->
-                            hideAds = v
-                            prefs.hideAds = v
-                            pages.values.forEach { if (it.loaded) it.web.reload() }
-                        },
-                        onOpen = { link ->
-                            moreOpened = link.url
-                            pages.getValue(AppTab.MORE).apply { web.clearHistory(); open(link.url) }
-                        },
+                }
+            } else {
+                LinkList(
+                    hideAds = hideAds,
+                    onHideAdsChange = { v ->
+                        hideAds = v
+                        prefs.hideAds = v
+                        pages.values.forEach { if (it.loaded) it.web.reload() }
+                    },
+                    compact = compact,
+                    onCompactChange = { v ->
+                        compact = v
+                        prefs.compact = v
+                        pages.values.forEach { if (it.loaded) it.web.reload() }
+                    },
+                    onOpen = { link ->
+                        moreOpened = link.url
+                        pages.getValue(AppTab.MORE).apply { web.clearHistory(); open(link.url) }
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 下の1段のバー：タブ4つ ＋ 縮小・倍率・拡大 ＋ メニュー */
+@Composable
+fun BottomBar(
+    tab: AppTab,
+    page: Page,
+    showingWeb: Boolean,
+    onTab: (AppTab) -> Unit,
+    onBack: () -> Unit,
+    onOpenBrowser: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 2.dp) {
+        Row(
+            Modifier.fillMaxWidth().navigationBarsPadding().height(50.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppTab.entries.forEach { t ->
+                val selected = tab == t
+                val color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().clickable { onTab(t) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(t.icon, null, tint = color, modifier = Modifier.size(22.dp))
+                    Text(
+                        t.label, color = color, fontSize = 10.sp, lineHeight = 11.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     )
+                }
+            }
+            if (showingWeb) {
+                IconButton(onClick = { page.zoomOut() }, enabled = page.zoom > ZOOM_MIN, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.ZoomOut, "縮小", modifier = Modifier.size(20.dp))
+                }
+                Text(
+                    "${page.pinchZoom ?: page.zoom}%",
+                    fontSize = 11.sp,
+                    modifier = Modifier.clickable { page.resetZoom() }.padding(horizontal = 2.dp),
+                )
+                IconButton(onClick = { page.zoomIn() }, enabled = page.zoom < ZOOM_MAX, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.ZoomIn, "拡大", modifier = Modifier.size(20.dp))
+                }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.MoreVert, "メニュー", modifier = Modifier.size(20.dp))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        if (page.canGoBack || tab == AppTab.MORE) {
+                            DropdownMenuItem(
+                                text = { Text("戻る") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) },
+                                onClick = { menu = false; onBack() },
+                            )
+                        }
+                        if (tab.url != null) {
+                            DropdownMenuItem(
+                                text = { Text("今の時間の番組表へ") },
+                                leadingIcon = { Icon(Icons.Filled.Home, null) },
+                                onClick = { menu = false; page.home() },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("再読み込み") },
+                            leadingIcon = { Icon(Icons.Filled.Refresh, null) },
+                            onClick = { menu = false; page.web.reload() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("拡大率を100%に戻す") },
+                            leadingIcon = { Icon(Icons.Filled.ZoomIn, null) },
+                            onClick = { menu = false; page.resetZoom() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("ブラウザで開く") },
+                            leadingIcon = { Icon(Icons.Filled.OpenInBrowser, null) },
+                            onClick = { menu = false; onOpenBrowser() },
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-/** 右下の拡大縮小ボタン（－ 100% ＋）。% を押すと100%に戻す */
 @Composable
-fun ZoomControls(page: Page, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        shadowElevation = 4.dp,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { page.zoomOut() }, enabled = page.zoom > ZOOM_MIN) {
-                Icon(Icons.Filled.ZoomOut, "縮小")
-            }
-            Text(
-                "${page.pinchZoom ?: page.zoom}%",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.clickable { page.resetZoom() }.padding(horizontal = 4.dp),
-            )
-            IconButton(onClick = { page.zoomIn() }, enabled = page.zoom < ZOOM_MAX) {
-                Icon(Icons.Filled.ZoomIn, "拡大")
-            }
-        }
-    }
-}
-
-@Composable
-fun LinkList(hideAds: Boolean, onHideAdsChange: (Boolean) -> Unit, onOpen: (Link) -> Unit) {
+fun LinkList(
+    hideAds: Boolean,
+    onHideAdsChange: (Boolean) -> Unit,
+    compact: Boolean,
+    onCompactChange: (Boolean) -> Unit,
+    onOpen: (Link) -> Unit,
+) {
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
@@ -241,6 +305,11 @@ fun LinkList(hideAds: Boolean, onHideAdsChange: (Boolean) -> Unit, onOpen: (Link
                 headlineContent = { Text("広告を隠す") },
                 supportingContent = { Text("番組表ページの広告枠を非表示にします（隠しきれない場合もあります）") },
                 trailingContent = { Switch(checked = hideAds, onCheckedChange = onHideAdsChange) },
+            )
+            ListItem(
+                headlineContent = { Text("番組表を広く表示") },
+                supportingContent = { Text("Gガイドのロゴ・ログイン・検索欄を隠し、日付などの切り替えだけ残します") },
+                trailingContent = { Switch(checked = compact, onCheckedChange = onCompactChange) },
             )
             HorizontalDivider()
         }
@@ -254,7 +323,7 @@ fun LinkList(hideAds: Boolean, onHideAdsChange: (Boolean) -> Unit, onOpen: (Link
         }
         item {
             Text(
-                "各番組表は、それぞれの提供元のWebサイトを表示しています。\n拡大縮小：2本指でピンチ、または右下の －／＋（タブごとに記憶）\nバージョン $version",
+                "各番組表は、それぞれの提供元のWebサイトを表示しています。\n拡大縮小：2本指でピンチ、または下のバーの －／＋（タブごとに記憶）\nもう一度同じタブを押すと今の時間の番組表に戻ります\nバージョン $version",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(16.dp),
