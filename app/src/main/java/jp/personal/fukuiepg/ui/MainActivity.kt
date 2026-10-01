@@ -212,7 +212,7 @@ fun AppRoot() {
     }
 }
 
-/** 下の1段のバー：地デジ・BS・CS ＋ メニュー ＋ 縮小・倍率・拡大 ＋ その他（あまり使わないので右端） */
+/** 下の1段のバー：地デジ・BS・CS ＋ メニュー ＋ 縮小・倍率・拡大（「その他」はメニューの中から開く） */
 @Composable
 fun BottomBar(
     tab: AppTab,
@@ -233,7 +233,7 @@ fun BottomBar(
             }
             // メニュー（押しやすいようにタブの並びに置く）
             Box(Modifier.weight(1f).fillMaxHeight()) {
-                BarItem(Icons.Filled.MoreVert, "メニュー", selected = false, modifier = Modifier.fillMaxSize()) { menu = true }
+                BarItem(Icons.Filled.Menu, "メニュー", selected = false, modifier = Modifier.fillMaxSize()) { menu = true }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (showingWeb && (page.canGoBack || tab == AppTab.MORE)) {
                         DropdownMenuItem(
@@ -285,9 +285,6 @@ fun BottomBar(
                 IconButton(onClick = { page.zoomIn() }, enabled = page.zoom < ZOOM_MAX, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.ZoomIn, "拡大", modifier = Modifier.size(20.dp))
                 }
-            }
-            BarItem(AppTab.MORE.icon, AppTab.MORE.label, selected = tab == AppTab.MORE, modifier = Modifier.width(48.dp)) {
-                onTab(AppTab.MORE)
             }
         }
     }

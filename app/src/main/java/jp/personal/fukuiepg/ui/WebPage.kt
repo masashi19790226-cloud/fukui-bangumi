@@ -21,6 +21,15 @@ import kotlin.math.roundToInt
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    init {
+        // v1.8: 標準の拡大率を80%に変えたので、これまで保存していた拡大率を一度だけ80%に戻す
+        if (!sp.getBoolean("zoomReset_v1_8", false)) {
+            val e = sp.edit()
+            sp.all.keys.filter { it.startsWith("zoom_") }.forEach { e.remove(it) }
+            e.putBoolean("zoomReset_v1_8", true).apply()
+        }
+    }
+
     fun zoom(key: String): Int = sp.getInt("zoom_$key", ZOOM_DEFAULT)
     fun setZoom(key: String, v: Int) = sp.edit().putInt("zoom_$key", v).apply()
 
@@ -43,7 +52,7 @@ const val ZOOM_MIN = 50
 const val ZOOM_MAX = 200
 const val ZOOM_STEP = 5
 /** 最初の拡大率（「標準に戻す」もこの値） */
-const val ZOOM_DEFAULT = 95
+const val ZOOM_DEFAULT = 80
 
 /**
  * タブごとのWebViewと、その表示状態。
