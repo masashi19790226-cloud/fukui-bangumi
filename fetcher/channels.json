@@ -1,0 +1,15 @@
+{
+  "_comment": "チャンネルマスター。enabled=false のチャンネルは番組データの取得元がまだ無いもの。source を追加すれば有効にできます。",
+  "nhk": {
+    "area": "180",
+    "_area_comment": "NHKの地域コード。180=福井"
+  },
+  "channels": [
+    { "id": "nhk-g1", "band": "GR", "number": "1",   "name": "NHK総合・福井", "source": "nhk", "service": "g1", "enabled": true },
+    { "id": "nhk-e1", "band": "GR", "number": "2",   "name": "NHK Eテレ",     "source": "nhk", "service": "e1", "enabled": true },
+    { "id": "fbc",    "band": "GR", "number": "7",   "name": "福井放送",       "source": "json_url", "url": "", "enabled": false },
+    { "id": "ftb",    "band": "GR", "number": "8",   "name": "福井テレビ",     "source": "json_url", "url": "", "enabled": false },
+    { "id": "nhk-s1", "band": "BS", "number": "101", "name": "NHK BS",        "source": "nhk", "service": "s1", "enabled": true },
+    { "id": "nhk-s5", "band": "BS", "number": "103", "name": "NHK BSプレミアム4K", "source": "nhk", "service": "s5", "enabled": false }
+  ]
+}

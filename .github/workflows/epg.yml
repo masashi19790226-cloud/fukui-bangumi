@@ -1,0 +1,63 @@
+# 番組表データ（今日を含む7日分）を3時間ごとに取得して gh-pages ブランチに置く
+name: 番組表を更新
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # UTC。日本時間 0,3,6,9,12,15,18,21時。3時の回は7日分すべて取り直す
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "7日分すべて取り直す"
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths: ["fetcher/**", ".github/workflows/epg.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: epg
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: テスト
+        run: python -m unittest discover tests
+
+      - name: 前回のデータを取り出す（取得失敗時の保険）
+        run: |
+          mkdir -p site
+          if git fetch --depth 1 origin gh-pages; then
+            git archive FETCH_HEAD | tar -x -C site
+          fi
+
+      - name: 番組表を取得
+        env:
+          NHK_API_KEY: ${{ secrets.NHK_API_KEY }}
+        run: |
+          FULL=""
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.full }}" = "true" ]; then FULL="--full"; fi
+          python fetcher/fetch_epg.py --out site $FULL
+
+      - name: gh-pages に公開
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "番組表を更新 $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M')"
+          # 履歴を増やさないよう毎回1コミットで上書き
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
