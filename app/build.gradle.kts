@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
-        versionName = "1.0." + ((project.findProperty("versionCode") as String?) ?: "0")
+        versionName = "${project.findProperty("appVersion") ?: "1.0"}." + ((project.findProperty("versionCode") as String?) ?: "0")
     }
 
     // 毎回同じ鍵で署名して、新しいAPKを上書きインストールできるようにする（個人利用向けの固定デバッグ鍵）

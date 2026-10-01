@@ -2,17 +2,10 @@
 
 package jp.personal.fukuiepg.ui
 
-import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -24,6 +17,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,6 +30,11 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +50,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -101,65 +100,6 @@ fun AppTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = scheme, content = content)
 }
 
-/** タブごとのWebViewと、その表示状態 */
-class Page(context: Context, val homeUrl: String?) {
-    var progress by mutableIntStateOf(100)
-    var title by mutableStateOf("")
-    var canGoBack by mutableStateOf(false)
-    var loaded = false
-
-    @SuppressLint("SetJavaScriptEnabled")
-    val web: WebView = WebView(context).apply {
-        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.loadWithOverviewMode = true
-        settings.useWideViewPort = true
-        settings.builtInZoomControls = true
-        settings.displayZoomControls = false
-        webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val u = request.url
-                // http/https はアプリ内で表示、それ以外（電話・地図・アプリ起動など）は外部へ
-                if (u.scheme == "http" || u.scheme == "https") return false
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, u)) }
-                return true
-            }
-
-            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                this@Page.canGoBack = view.canGoBack()
-            }
-
-            override fun onPageFinished(view: WebView, url: String?) {
-                this@Page.canGoBack = view.canGoBack()
-                this@Page.title = view.title.orEmpty()
-            }
-        }
-        webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                this@Page.progress = newProgress
-            }
-        }
-    }
-
-    fun open(url: String) {
-        loaded = true
-        web.loadUrl(url)
-    }
-
-    /** 初めて表示するときだけ読み込む */
-    fun ensureLoaded() {
-        if (!loaded && homeUrl != null) open(homeUrl)
-    }
-
-    /** トップ（今の時間の番組表）に戻る */
-    fun home() {
-        val h = homeUrl ?: return
-        web.clearHistory()
-        open(h)
-    }
-}
-
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
@@ -167,8 +107,10 @@ fun AppRoot() {
     // 「その他」から開いたページ（null ならリンク集を表示）
     var moreOpened by rememberSaveable { mutableStateOf<String?>(null) }
 
+    val prefs = remember { Prefs(context) }
+    var hideAds by remember { mutableStateOf(prefs.hideAds) }
     val pages = remember {
-        AppTab.entries.associateWith { Page(context, it.url) }
+        AppTab.entries.associateWith { Page(context, it.name, it.url, prefs) }
     }
     val page = pages.getValue(tab)
     val showingWeb = tab.url != null || moreOpened != null
@@ -242,20 +184,66 @@ fun AppRoot() {
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
+                    ZoomControls(page, Modifier.align(Alignment.BottomEnd).padding(12.dp))
                 } else {
-                    LinkList { link ->
-                        moreOpened = link.url
-                        pages.getValue(AppTab.MORE).apply { web.clearHistory(); open(link.url) }
-                    }
+                    LinkList(
+                        hideAds = hideAds,
+                        onHideAdsChange = { v ->
+                            hideAds = v
+                            prefs.hideAds = v
+                            pages.values.forEach { if (it.loaded) it.web.reload() }
+                        },
+                        onOpen = { link ->
+                            moreOpened = link.url
+                            pages.getValue(AppTab.MORE).apply { web.clearHistory(); open(link.url) }
+                        },
+                    )
                 }
             }
         }
     }
 }
 
+/** 右下の拡大縮小ボタン（－ 100% ＋）。% を押すと100%に戻す */
 @Composable
-fun LinkList(onOpen: (Link) -> Unit) {
+fun ZoomControls(page: Page, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        shadowElevation = 4.dp,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { page.zoomOut() }, enabled = page.zoom > ZOOM_MIN) {
+                Icon(Icons.Filled.ZoomOut, "縮小")
+            }
+            Text(
+                "${page.pinchZoom ?: page.zoom}%",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.clickable { page.resetZoom() }.padding(horizontal = 4.dp),
+            )
+            IconButton(onClick = { page.zoomIn() }, enabled = page.zoom < ZOOM_MAX) {
+                Icon(Icons.Filled.ZoomIn, "拡大")
+            }
+        }
+    }
+}
+
+@Composable
+fun LinkList(hideAds: Boolean, onHideAdsChange: (Boolean) -> Unit, onOpen: (Link) -> Unit) {
+    val context = LocalContext.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+    }
     LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            ListItem(
+                headlineContent = { Text("広告を隠す") },
+                supportingContent = { Text("番組表ページの広告枠を非表示にします（隠しきれない場合もあります）") },
+                trailingContent = { Switch(checked = hideAds, onCheckedChange = onHideAdsChange) },
+            )
+            HorizontalDivider()
+        }
         items(LINKS) { l ->
             ListItem(
                 headlineContent = { Text(l.title) },
@@ -266,7 +254,7 @@ fun LinkList(onOpen: (Link) -> Unit) {
         }
         item {
             Text(
-                "各番組表は、それぞれの提供元のWebサイトをそのまま表示しています。",
+                "各番組表は、それぞれの提供元のWebサイトを表示しています。\n拡大縮小：2本指でピンチ、または右下の －／＋（タブごとに記憶）\nバージョン $version",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(16.dp),

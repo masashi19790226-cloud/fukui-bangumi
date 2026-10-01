@@ -23,26 +23,28 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: バージョンを決める
+        run: |
+          VER="$(grep '^appVersion=' gradle.properties | cut -d= -f2 | tr -d '\r ').${{ github.run_number }}"
+          echo "VER=${VER}" >> "$GITHUB_ENV"
+          echo "バージョン: ${VER}"
+
       - name: APKをビルド
         run: |
-          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          REPO="${GITHUB_REPOSITORY#*/}"
-          BASE_URL="https://${OWNER}.github.io/${REPO}/epg/"
-          echo "番組データURL: ${BASE_URL}"
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace -PepgBaseUrl="${BASE_URL}" -PversionCode=${{ github.run_number }}
-          cp app/build/outputs/apk/debug/app-debug.apk fukui-bangumi.apk
+          ./gradlew assembleDebug --stacktrace -PversionCode=${{ github.run_number }}
+          cp app/build/outputs/apk/debug/app-debug.apk "fukui-bangumi-v${VER}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fukui-bangumi-apk
-          path: fukui-bangumi.apk
+          name: fukui-bangumi-v${{ env.VER }}
+          path: fukui-bangumi-v${{ env.VER }}.apk
 
       - name: Releases に公開
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: 福井番組表 v1.0.${{ github.run_number }}
-          body: スマホでこのページを開き、fukui-bangumi.apk をダウンロードしてインストールしてください。
-          files: fukui-bangumi.apk
+          tag_name: v${{ env.VER }}
+          name: 福井番組表 v${{ env.VER }}
+          body: スマホでこのページを開き、fukui-bangumi-v${{ env.VER }}.apk をダウンロードしてインストールしてください。
+          files: fukui-bangumi-v${{ env.VER }}.apk
           make_latest: true
