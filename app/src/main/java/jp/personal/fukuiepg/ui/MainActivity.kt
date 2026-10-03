@@ -14,6 +14,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -78,6 +83,9 @@ enum class AppTab(val label: String, val icon: ImageVector, val url: String?) {
     CS("CS", Icons.Filled.LiveTv, "https://www.cablegate.tv/epg/aBfnjnCF?siType=8&areaId=36"),
     MORE("その他", Icons.Filled.Menu, null),
 }
+
+/** 番組表の左側の余白（一番左の時刻が画面のふちで切れないように） */
+val LEFT_MARGIN = 2.5.dp
 
 /** 「その他」タブのリンク集（各社の公式番組表） */
 data class Link(val title: String, val note: String, val url: String)
@@ -156,7 +164,12 @@ fun AppRoot() {
             )
         },
     ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
+        // 左端が画面のふち（カーブや切り欠き）に隠れないよう、左に少し余白をとる
+        Box(
+            Modifier.padding(pad).fillMaxSize()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                .padding(start = LEFT_MARGIN),
+        ) {
             if (showingWeb) {
                 // key でタブごとに別のWebViewを差し替える（各タブの表示位置は保たれる）
                 androidx.compose.runtime.key(tab) {
