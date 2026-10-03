@@ -85,7 +85,7 @@ enum class AppTab(val label: String, val icon: ImageVector, val url: String?) {
 }
 
 /** 番組表の左側の余白（一番左の時刻が画面のふちで切れないように） */
-val LEFT_MARGIN = 2.5.dp
+val LEFT_MARGIN = 5.dp
 
 /** 「その他」タブのリンク集（各社の公式番組表） */
 data class Link(val title: String, val note: String, val url: String)
