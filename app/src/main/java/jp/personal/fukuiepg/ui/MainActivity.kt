@@ -214,7 +214,7 @@ fun AppRoot() {
     }
 }
 
-/** 下の1段のバー：地デジ・BS・CS ＋ メニュー ＋ 縮小・倍率・拡大（「その他」はメニューの中から開く） */
+/** 下の1段のバー：地デジ・BS・CS ＋ メニュー ＋ 再読込 ＋ 縮小・倍率・拡大（「その他」はメニューの中から開く） */
 @Composable
 fun BottomBar(
     tab: AppTab,
@@ -253,11 +253,6 @@ fun BottomBar(
                     }
                     if (showingWeb) {
                         DropdownMenuItem(
-                            text = { Text("再読み込み") },
-                            leadingIcon = { Icon(Icons.Filled.Refresh, null) },
-                            onClick = { menu = false; page.web.reload() },
-                        )
-                        DropdownMenuItem(
                             text = { Text("拡大率を標準（$ZOOM_DEFAULT%）に戻す") },
                             leadingIcon = { Icon(Icons.Filled.ZoomIn, null) },
                             onClick = { menu = false; page.resetZoom() },
@@ -276,6 +271,7 @@ fun BottomBar(
                 }
             }
             if (showingWeb) {
+                BarItem(Icons.Filled.Refresh, "再読込", selected = false, modifier = Modifier.weight(1f)) { page.web.reload() }
                 IconButton(onClick = { page.zoomOut() }, enabled = page.zoom > ZOOM_MIN, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.ZoomOut, "縮小", modifier = Modifier.size(20.dp))
                 }

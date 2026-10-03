@@ -367,6 +367,9 @@ const val HIDE_ADS_JS = """
     '[id*="taboola"]','[class*="taboola"]','[id*="logly"]','[class*="logly"]',
     '[class*="ad-banner"]','[class*="adBanner"]','[id*="adBanner"]','[class*="ad_banner"]',
     '.fixed-banner','[data-ad-banner]',
+    '#ca-interstitial-ad-container','#interstitial_from_other','#interstitial_browser_back',
+    '.ca_profitx_ad_container','[class*="ca_profitx"]','[id*="interstitial"]','[class*="interstitial"]',
+    '[id*="geniee"]','[class*="geniee"]','[id^="gn_"]',
     '[class*="adArea"]','[id*="adArea"]','[class*="ad_area"]','[id*="ad_area"]','[class*="ad-area"]'
   ].join(',') + '{display:none!important;}';
   var st = document.createElement('style');
@@ -395,11 +398,21 @@ const val HIDE_ADS_JS = """
       cands.push(c);
       for (var j = 0; j < c.children.length && j < 50; j++) cands.push(c.children[j]);
     }
+    var vw = window.innerWidth || 360;
     cands.forEach(function(el){
+      if (el.id === 'fukui-now-line') return;
       var cs = getComputedStyle(el);
       if (cs.position !== 'fixed') return;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return;
       var r = el.getBoundingClientRect();
-      if (r.height > 0 && r.top > vh * 0.55 && r.height < vh * 0.45) hide(el);
+      // 画面下部のオーバーレイ広告
+      if (r.height > 0 && r.top > vh * 0.55 && r.height < vh * 0.45) { hide(el); return; }
+      // 画面全体を覆う暗い幕（全画面広告＝インタースティシャルの背景）
+      if (r.width >= vw * 0.9 && r.height >= vh * 0.9) hide(el);
+    });
+    // 全画面広告が止めたスクロールを元に戻す
+    [document.documentElement, document.body].forEach(function(e){
+      if (e && e.style && e.style.overflow === 'hidden') e.style.overflow = '';
     });
   }
 
