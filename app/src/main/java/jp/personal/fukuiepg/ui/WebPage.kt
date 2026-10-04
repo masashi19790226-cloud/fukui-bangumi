@@ -293,7 +293,7 @@ const val NOW_LINE_JS = """
 
 /**
  * 現在時刻の赤い横線（CableGate＝CSタブ用）。
- * 番組の data-start-date / data-end-date と位置から今の高さを計算する。30秒ごとに引き直す。
+ * 番組の data-start-date / data-end-date と位置から今の高さを計算する。2秒ごとに引き直す。
  */
 const val NOW_LINE_CABLEGATE_JS = """
 (function(){
@@ -328,7 +328,8 @@ const val NOW_LINE_CABLEGATE_JS = """
   if (window.__fukuiNowLineCg) { draw(); return; }
   window.__fukuiNowLineCg = true;
   draw();
-  setInterval(draw, 30000);
+  // CableGate は番組表をページの読み込み後に組み立て、スクロールなどで描き直すので、こまめに引き直す
+  setInterval(draw, 2000);
 })();
 """
 
