@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -68,6 +69,15 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
     var loaded = false
 
     private var pinchFactor = 1f
+
+    init {
+        // CableGate は「どのケーブル局か」をクッキーで覚える。初回から福井ケーブルテレビの番組表が出るよう先に入れておく
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setCookie("https://www.cablegate.tv", "catvId=aBfnjnCF; path=/; max-age=31536000")
+            setCookie("https://www.cablegate.tv", "areaId=36; path=/; max-age=31536000")
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     val web: WebView = WebView(context).apply {
@@ -170,6 +180,7 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
         if (prefs.hideAds) web.evaluateJavascript(HIDE_ADS_JS, null)
         if (prefs.compact) web.evaluateJavascript(COMPACT_JS, null)
         web.evaluateJavascript(NOW_LINE_JS, null)
+        web.evaluateJavascript(NOW_LINE_CABLEGATE_JS, null)
         if (prefs.extraChannels) web.evaluateJavascript(EXTRA_CHANNELS_JS, null)
     }
 
@@ -275,6 +286,47 @@ const val NOW_LINE_JS = """
   window.__fukuiNowLineDraw = draw;
   if (window.__fukuiNowLine) { draw(); return; }
   window.__fukuiNowLine = true;
+  draw();
+  setInterval(draw, 30000);
+})();
+"""
+
+/**
+ * 現在時刻の赤い横線（CableGate＝CSタブ用）。
+ * 番組の data-start-date / data-end-date と位置から今の高さを計算する。30秒ごとに引き直す。
+ */
+const val NOW_LINE_CABLEGATE_JS = """
+(function(){
+  if (location.host.indexOf('cablegate.tv') < 0) return;
+  function parse(s){ return s ? new Date(s.replace(' ', 'T')) : null; }
+  function draw(){
+    var inner = document.querySelector('.schedule-table-columns-inner');
+    var line = document.getElementById('fukui-now-line');
+    if (!inner) { if (line) line.remove(); return; }
+    var now = new Date(), hit = null;
+    var progs = inner.querySelectorAll('.schedule-column .program[data-start-date]');
+    for (var i = 0; i < progs.length; i++) {
+      var p = progs[i];
+      if (p.offsetHeight <= 0) continue;
+      var st = parse(p.getAttribute('data-start-date')), en = parse(p.getAttribute('data-end-date'));
+      if (st && en && st <= now && now < en) { hit = { p: p, st: st, en: en }; break; }
+    }
+    if (!hit) { if (line) line.remove(); return; }
+    var col = hit.p.offsetParent;
+    var y = (col ? col.offsetTop : 0) + hit.p.offsetTop + (now - hit.st) / Math.max(hit.en - hit.st, 1) * hit.p.offsetHeight;
+    if (getComputedStyle(inner).position === 'static') inner.style.position = 'relative';
+    if (!line) {
+      line = document.createElement('div');
+      line.id = 'fukui-now-line';
+      line.style.cssText = 'position:absolute;left:0;height:0;border-top:2px solid #E53935;z-index:3;pointer-events:none;';
+    }
+    if (line.parentNode !== inner) inner.appendChild(line);
+    line.style.top = (y - 1) + 'px';
+    line.style.width = inner.scrollWidth + 'px';
+  }
+  window.__fukuiNowLineDraw = draw;
+  if (window.__fukuiNowLineCg) { draw(); return; }
+  window.__fukuiNowLineCg = true;
   draw();
   setInterval(draw, 30000);
 })();
