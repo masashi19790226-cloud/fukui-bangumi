@@ -10,6 +10,8 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.getValue
@@ -48,6 +50,9 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("extraChannels", true)
         set(v) = sp.edit().putBoolean("extraChannels", v).apply()
 }
+
+/** 全画面広告（スクロールすると画面を覆う広告）の配信元。「広告を隠す」がオンのとき読み込まない */
+val BLOCKED_AD_HOSTS = listOf("geniee.jp", "gsspcln.jp", "caprofitx.com")
 
 const val ZOOM_MIN = 50
 const val ZOOM_MAX = 200
@@ -92,6 +97,16 @@ class Page(context: Context, val key: String, val homeUrl: String?, private val 
         settings.displayZoomControls = false
 
         webViewClient = object : WebViewClient() {
+            // 「広告を隠す」がオンのときは、全画面広告（インタースティシャル）の配信元を読み込まない
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (!prefs.hideAds) return null
+                val host = request.url.host ?: return null
+                if (BLOCKED_AD_HOSTS.any { host == it || host.endsWith(".$it") }) {
+                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                }
+                return null
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val u = request.url
                 // http/https はアプリ内で表示、それ以外（電話・地図・アプリ起動など）は外部へ
@@ -473,8 +488,19 @@ const val HIDE_ADS_JS = """
       if (r.width >= vw * 0.9 && r.height >= vh * 0.9) hide(el);
     });
     // 全画面広告が止めたスクロールを元に戻す
+    // （全画面広告はスクロール時に出て、ページ全体を position:fixed で固定する。広告を隠すと固定が解けず、
+    //   番組表がいちばん上＝朝の時間帯に戻ったままになるので、固定を外して元の位置へスクロールし直す）
     [document.documentElement, document.body].forEach(function(e){
-      if (e && e.style && e.style.overflow === 'hidden') e.style.overflow = '';
+      if (!e || !e.style) return;
+      if (e.style.overflow === 'hidden') e.style.overflow = '';
+      var fixedInline = e.style.position === 'fixed';
+      var fixedCss = !fixedInline && getComputedStyle(e).position === 'fixed';
+      if (fixedInline || fixedCss) {
+        var top = parseInt(e.style.top, 10) || 0;
+        if (fixedInline) { e.style.position = ''; e.style.top = ''; e.style.left = ''; e.style.width = ''; }
+        else e.style.setProperty('position', 'static', 'important');
+        if (top < 0) window.scrollTo(window.scrollX, -top);
+      }
     });
   }
 
