@@ -249,7 +249,8 @@ const val COMPACT_JS = """
 
 /**
  * 現在時刻の赤い横線を番組表に引くスクリプト（Gガイド用）。
- * 番組ごとの開始・終了時刻（s / e 属性）と位置から、今の時刻の高さを計算する。30秒ごとに引き直す。
+ * 番組ごとの開始・終了時刻（s / e 属性）と位置から、今の時刻の高さを計算する。5秒ごとに引き直す。
+ * 番組表の中には要素を足さず、ページの一番上の階層（body）に重ねて描く（Gガイドの動きを邪魔しないため）。
  * 今日以外の日付を表示しているときは線を出さない。
  */
 const val NOW_LINE_JS = """
@@ -272,22 +273,28 @@ const val NOW_LINE_JS = """
     }
     if (!hit) { if (line) line.remove(); return; }
     var st = toDate(hit.getAttribute('s')), en = toDate(hit.getAttribute('e'));
-    var y = ul.offsetTop + hit.offsetTop + (now - st) / Math.max(en - st, 1) * hit.offsetHeight;
-    var cont = ul.offsetParent || document.body;
+    // Gガイドの番組表の中には手を入れず、ページ全体（body）の上に重ねて線を引く
+    var hr = hit.getBoundingClientRect();
+    var area = document.getElementById('program_area') || ul.parentNode;
+    var ar = area.getBoundingClientRect();
+    var y = hr.top + window.scrollY + (now - st) / Math.max(en - st, 1) * hr.height;
     if (!line) {
       line = document.createElement('div');
       line.id = 'fukui-now-line';
-      line.style.cssText = 'position:absolute;left:0;height:0;border-top:2px solid #E53935;z-index:5;pointer-events:none;';
+      line.style.cssText = 'position:absolute;height:0;border-top:2px solid #E53935;z-index:5;pointer-events:none;';
     }
-    if (line.parentNode !== cont) cont.appendChild(line);
-    line.style.top = (y - 1) + 'px';
-    line.style.width = cont.scrollWidth + 'px';
+    if (line.parentNode !== document.body) document.body.appendChild(line);
+    line.style.top = Math.round(y - 1) + 'px';
+    line.style.left = Math.round(ar.left + window.scrollX) + 'px';
+    var w = 0;
+    for (var k = 0; k < uls.length; k++) { var r = uls[k].getBoundingClientRect(); var lc = uls[k].lastElementChild; var rr = lc ? lc.getBoundingClientRect().right : r.right; if (rr > w) w = rr; }
+    line.style.width = Math.max(Math.round(w - ar.left), 0) + 'px';
   }
   window.__fukuiNowLineDraw = draw;
   if (window.__fukuiNowLine) { draw(); return; }
   window.__fukuiNowLine = true;
   draw();
-  setInterval(draw, 30000);
+  setInterval(draw, 5000);
 })();
 """
 
@@ -434,7 +441,9 @@ const val HIDE_ADS_JS = """
   function sweep(){
     var vh = window.innerHeight || 800;
     // 他サイトの iframe = 広告として隠し、それだけを包んでいた小さな枠も隠す
+    var grid = document.getElementById('contents');
     document.querySelectorAll('iframe').forEach(function(f){
+      if (grid && grid.contains(f)) return;  // Gガイドの番組表の中には手を入れない
       var src = f.getAttribute('src') || '';
       var other = src === '' || src.indexOf('about:') === 0 || (src.indexOf('//') >= 0 && src.indexOf(location.host) < 0);
       if (!other) return;
